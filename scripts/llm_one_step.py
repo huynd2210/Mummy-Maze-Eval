@@ -21,6 +21,8 @@ INSTRUCTIONS = (
     "Legends: 'W' = white mummy, 'R' = red mummy, 'S' = scorpion, 'T' = trap, 'K' = key, 'G' = gate, 'g' = open gate, 'E' = exit, 'P' = player.\n\n"
     "The output format is: \"Action: <action>\".\n\n"
     "Available actions are: UP, DOWN, LEFT, RIGHT, WAIT, UNDO, RESET.\n"
+    "UNDO: revert the last applied action.\n"
+    "RESET: restore the initial state.\n"
 )
 
 ALLOWED = {"UP", "DOWN", "LEFT", "RIGHT", "WAIT", "UNDO", "RESET"}
