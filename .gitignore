@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+*.pyd
+
+# Envs
+.env
+.env.*
+
+# Data backups
+data/*.bak
+
+# Node (not used, but safe)
+node_modules/
+
