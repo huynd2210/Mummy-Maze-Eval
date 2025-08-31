@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Level Editor</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <header>
+    <h1>Level Editor</h1>
+    <p>Pick a tool, then click: cell tools (Player, White, Red, Trap, Key) place items on cells; edge tools (Wall, Gate) toggle edges between cells.</p>
+  </header>
+
+  <section class="toolbar">
+    <div class="rowcol">
+      <label>Rows <input id="rowsInput" type="number" min="1" value="8"></label>
+      <label>Cols <input id="colsInput" type="number" min="1" value="8"></label>
+      <button id="newBtn">New Board</button>
+      <button id="loadBtn">Load</button>
+      <button id="saveBtn" class="primary">Save</button>
+      <button id="clearBtn">Clear inner walls/gates</button>
+      <button id="clearEntitiesBtn">Clear entities</button>
+    </div>
+
+    <div class="tools">
+      <span>Tool:</span>
+      <label><input type="radio" name="tool" value="wall" checked> Wall</label>
+      <label><input type="radio" name="tool" value="gate"> Gate</label>
+      <label><input type="radio" name="tool" value="player"> Player</label>
+      <label><input type="radio" name="tool" value="white"> White</label>
+      <label><input type="radio" name="tool" value="red"> Red</label>
+      <label><input type="radio" name="tool" value="trap"> Trap</label>
+      <label><input type="radio" name="tool" value="key"> Key</label>
+      <label><input type="radio" name="tool" value="exit"> Exit</label>
+    </div>
+
+    <div class="export">
+      <button id="exportJsonBtn">Export JSON</button>
+      <label>Index base
+        <select id="indexBase">
+          <option value="0" selected>0-based</option>
+          <option value="1">1-based</option>
+        </select>
+      </label>
+      <button id="exportPairsBtn">Export pairs (walls+gates+entities)</button>
+      <button id="copyExportBtn" title="Copy export text">Copy</button>
+    </div>
+
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <main>
+    <div class="canvas-wrap">
+      <canvas id="boardCanvas" width="640" height="640"></canvas>
+    </div>
+
+    <details id="exportPanel" class="export-panel">
+      <summary>Export output</summary>
+      <textarea id="exportText" rows="14" spellcheck="false"></textarea>
+    </details>
+  </main>
+
+  <script src="{{ url_for('static', filename='editor.js') }}"></script>
+</body>
+</html>
