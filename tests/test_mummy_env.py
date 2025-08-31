@@ -196,16 +196,16 @@ def test_scorpion_moves_one_step_like_white_horizontal_first():
     assert g.board['scorpions'][0] == [0, 1]
 
 
-def test_mummy_vs_mummy_collision_last_mover_wins():
-    # 1x6, player far right, two whites adjacent at 2 and 3; first moves into 3 and kills the occupant
+def test_mummy_moves_simultaneous_resolution_no_inline_collision():
+    # 1x6, player far right, two whites adjacent at 2 and 3; with simultaneous resolution, both move forward
     b = fresh_board(rows=1, cols=6)
     b["player"] = [0, 5]
     b["white_mummies"] = [[0, 2], [0, 3]]
     g = Game(b)
     g.step('WAIT')
-    # After first phase, only one white survives, at c=3; second phase moves to c=4
-    assert len(g.board['white_mummies']) == 1
-    assert g.board['white_mummies'][0] == [0, 4]
+    # After two mummy sub-steps, positions advance without inline collision removal
+    whites = sorted(g.board['white_mummies'])
+    assert whites == [[0, 4], [0, 5]]
 
 
 def test_mummy_defeats_scorpion_mover_wins_rule():

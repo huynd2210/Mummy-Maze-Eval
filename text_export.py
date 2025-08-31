@@ -43,7 +43,9 @@ DEFAULT_SYMBOLS: Dict[str, str] = {
     'v_wall': '|',
     'h_gate': '=',
     'v_gate': ':',
-    'empty': '.',
+    # background and cells
+    'empty': ' ',   # use space for non-cell background to avoid misleading '.' counts
+    'cell': '.',    # use dot to mark empty cell centers only
     # entities
     'player': 'P',
     'exit': 'E',
@@ -94,6 +96,13 @@ def board_to_double_res_text(board: dict, join_style: str = 'auto', symbols: Opt
     H = 2 * rows + 1
     W = 2 * cols + 1
     grid: List[List[str]] = [[syms['empty'] for _ in range(W)] for _ in range(H)]
+
+    # Mark cell centers with '.' so distance counting is accurate
+    for r in range(rows):
+        for c in range(cols):
+            rr = 2 * r + 1
+            cc = 2 * c + 1
+            grid[rr][cc] = syms['cell']
 
     # Draw horizontal edges
     for r in range(rows + 1):

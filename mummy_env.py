@@ -429,72 +429,64 @@ class Game:
         # Build list of mummies in a deterministic order: whites then reds
         mummies = [("white", [int(r), int(c)]) for (r,c) in (self.board.get('white_mummies') or [])]
         mummies += [("red", [int(r), int(c)]) for (r,c) in (self.board.get('red_mummies') or [])]
-        # Occupancy includes all enemies at phase start
-        occ = { (rc[0], rc[1]): (typ, i) for i, (typ, rc) in enumerate(mummies) }
-        # Also include scorpions to allow collisions (mover survives rule)
         scorpions = [[int(r), int(c)] for (r,c) in (self.board.get('scorpions') or [])]
-        sc_occ = { (r, c): ("scorpion", i) for i, (r, c) in enumerate(scorpions) }
-        # Process sequentially; last mover into a square wins
-        survivors: list[tuple[str, list[int]]] = []
-        # Keep track if an entity is still alive
-        alive_mummy = [True] * len(mummies)
-        alive_scorp = [True] * len(scorpions)
 
-        for i, (typ, rc) in enumerate(mummies):
-            if not alive_mummy[i]:
-                continue
+        # 1) Compute intended moves for all mummies (no collisions resolved yet)
+        intended: list[tuple[str, list[int], list[int]]] = []  # (typ, from_rc, to_rc)
+        for (typ, rc) in mummies:
             r, c = rc
             dr, dc = self._mummy_dir(typ, r, c)
-            if dr == 0 and dc == 0:
-                # No move
-                survivors.append((typ, [r, c]))
-                continue
-            if _edge_blocked(self.board, r, c, dr, dc):
-                # Can't move due to edge block
-                survivors.append((typ, [r, c]))
-                continue
             nr, nc = r + dr, c + dc
-            # record move intent (actual outcome might be collision)
-            self._phase_events.append({'type': 'move', 'entity': typ, 'from': [r, c], 'to': [nr, nc]})
-            # Check collisions
-            if (nr, nc) in occ:
-                # Kill occupant mummy; mover survives and takes the square
-                self._phase_events.append({'type': 'collision', 'winner': typ, 'loser': 'mummy', 'at': [nr, nc]})
-                occ.pop((nr, nc), None)
-                # Mark that occupant as dead by scanning mummies list
-                for j, (_t2, rc2) in enumerate(mummies):
-                    if alive_mummy[j] and rc2[0] == nr and rc2[1] == nc:
-                        alive_mummy[j] = False
-                        break
-                # Update occupancy: remove mover's old and set new
-                occ.pop((r, c), None)
-                occ[(nr, nc)] = (typ, i)
-                survivors.append((typ, [nr, nc]))
-            elif (nr, nc) in sc_occ and alive_scorp[sc_occ[(nr, nc)][1]]:
-                # Mummy moves onto scorpion -> mover survives
-                self._phase_events.append({'type': 'collision', 'winner': typ, 'loser': 'scorpion', 'at': [nr, nc]})
-                sidx = sc_occ[(nr, nc)][1]
-                alive_scorp[sidx] = False
-                occ.pop((r, c), None)
-                occ[(nr, nc)] = (typ, i)
-                survivors.append((typ, [nr, nc]))
+            if dr == 0 and dc == 0 or _edge_blocked(self.board, r, c, dr, dc):
+                intended.append((typ, [r, c], [r, c]))
             else:
-                # Empty or player cell
-                prc = self._pos()
-                if prc is not None and (nr, nc) == prc:
-                    # Capture will be detected after phase; still move into cell
-                    pass
-                occ.pop((r, c), None)
-                occ[(nr, nc)] = (typ, i)
-                survivors.append((typ, [nr, nc]))
-            # If landing on a key, toggle all gates
-            if self._cell_has_key(nr, nc):
+                intended.append((typ, [r, c], [nr, nc]))
+                self._phase_events.append({'type': 'move', 'entity': typ, 'from': [r, c], 'to': [nr, nc]})
+
+        # 2) Resolve collisions among mummies AFTER all moved: last mover wins
+        # Group by target cell
+        targets: dict[tuple[int,int], list[int]] = {}
+        for idx, (_typ, _frm, to) in enumerate(intended):
+            key = (to[0], to[1])
+            targets.setdefault(key, []).append(idx)
+        alive_mummy = [True] * len(intended)
+        for key, idxs in targets.items():
+            if len(idxs) > 1:
+                winner_idx = max(idxs)  # last mover wins by order
+                winner_typ = intended[winner_idx][0]
+                for j in idxs:
+                    if j == winner_idx:
+                        continue
+                    if alive_mummy[j]:
+                        alive_mummy[j] = False
+                        self._phase_events.append({'type': 'collision', 'winner': winner_typ, 'loser': 'mummy', 'at': [key[0], key[1]]})
+
+        # 3) Resolve mummy vs scorpion: mummies survive
+        alive_scorp = [True] * len(scorpions)
+        pos_to_scorp = {(r,c): i for i, (r,c) in enumerate(scorpions)}
+        for i, (typ, _frm, to) in enumerate(intended):
+            if not alive_mummy[i]:
+                continue
+            sidx = pos_to_scorp.get((to[0], to[1]))
+            if sidx is not None and alive_scorp[sidx]:
+                alive_scorp[sidx] = False
+                self._phase_events.append({'type': 'collision', 'winner': typ, 'loser': 'scorpion', 'at': [to[0], to[1]]})
+
+        # 4) Apply toggles for any keys stepped on (order doesn't matter for parity)
+        for i, (typ, _frm, to) in enumerate(intended):
+            if not alive_mummy[i]:
+                continue
+            if self._cell_has_key(to[0], to[1]):
                 tcnt = _toggle_all_gates(self.board)
                 self._phase_toggled += tcnt
                 if tcnt:
-                    self._phase_events.append({'type': 'toggle_gates', 'by': typ, 'at': [nr, nc], 'count': tcnt})
+                    self._phase_events.append({'type': 'toggle_gates', 'by': typ, 'at': [to[0], to[1]], 'count': tcnt})
 
-        # Update board lists and remove dead scorpions
+        # 5) Commit survivors to board
+        survivors: list[tuple[str, list[int]]] = []
+        for i, (typ, _frm, to) in enumerate(intended):
+            if alive_mummy[i]:
+                survivors.append((typ, [to[0], to[1]]))
         self.board['white_mummies'] = [pos for (t, pos) in survivors if t == 'white']
         self.board['red_mummies'] = [pos for (t, pos) in survivors if t == 'red']
         self.board['scorpions'] = [scorpions[i] for i in range(len(scorpions)) if alive_scorp[i]]
@@ -528,73 +520,59 @@ class Game:
         # Reset phase log
         self._phase_events = []
         self._phase_toggled = 0
-        # Scorpions move one step towards player
+        # Scorpions move one step towards player (simultaneous resolution)
         scs = [[int(r), int(c)] for (r,c) in (self.board.get('scorpions') or [])]
-        # Occupancy of enemies (post-mummy)
-        occ = { (r, c): ('scorpion', i) for i, (r, c) in enumerate(scs) }
-        for (r, c) in (self.board.get('white_mummies') or []):
-            occ[(r, c)] = ('white', -1)
-        for (r, c) in (self.board.get('red_mummies') or []):
-            occ[(r, c)] = ('red', -1)
+        # Intended moves
+        intended: list[tuple[list[int], list[int]]] = []  # (from, to)
+        for (r,c) in scs:
+            dr, dc = self._scorpion_dir(r, c)
+            nr, nc = r + dr, c + dc
+            if dr == 0 and dc == 0 or _edge_blocked(self.board, r, c, dr, dc):
+                intended.append(([r,c],[r,c]))
+            else:
+                intended.append(([r,c],[nr,nc]))
+                self._phase_events.append({'type': 'move', 'entity': 'scorpion', 'from': [r, c], 'to': [nr, nc]})
 
-        alive_scorp = [True] * len(scs)
-        new_scs: list[list[int]] = []
+        # Resolve scorpion-vs-scorpion collisions after all moved: last mover wins
+        targets: dict[tuple[int,int], list[int]] = {}
+        for idx, (_frm, to) in enumerate(intended):
+            key = (to[0], to[1])
+            targets.setdefault(key, []).append(idx)
+        alive_scorp = [True] * len(intended)
+        for key, idxs in targets.items():
+            if len(idxs) > 1:
+                winner_idx = max(idxs)
+                for j in idxs:
+                    if j == winner_idx:
+                        continue
+                    if alive_scorp[j]:
+                        alive_scorp[j] = False
+                        self._phase_events.append({'type': 'collision', 'winner': 'scorpion', 'loser': 'scorpion', 'at': [key[0], key[1]]})
 
-        for i, (r, c) in enumerate(scs):
+        # Resolve scorpion vs mummy: mummy survives
+        mummy_positions = {tuple(rc) for rc in (self.board.get('white_mummies') or [])}
+        mummy_positions.update({tuple(rc) for rc in (self.board.get('red_mummies') or [])})
+        for i, (_frm, to) in enumerate(intended):
             if not alive_scorp[i]:
                 continue
-            dr, dc = self._scorpion_dir(r, c)
-            if dr == 0 and dc == 0:
-                new_scs.append([r, c])
+            if (to[0], to[1]) in mummy_positions:
+                alive_scorp[i] = False
+                # Identify mummy type for logging if possible
+                mt = 'white' if [to[0], to[1]] in (self.board.get('white_mummies') or []) else ('red' if [to[0], to[1]] in (self.board.get('red_mummies') or []) else 'mummy')
+                self._phase_events.append({'type': 'collision', 'winner': mt, 'loser': 'scorpion', 'at': [to[0], to[1]]})
+
+        # Apply key toggles for surviving scorpions
+        for i, (_frm, to) in enumerate(intended):
+            if not alive_scorp[i]:
                 continue
-            if _edge_blocked(self.board, r, c, dr, dc):
-                new_scs.append([r, c])
-                continue
-            nr, nc = r + dr, c + dc
-            self._phase_events.append({'type': 'move', 'entity': 'scorpion', 'from': [r, c], 'to': [nr, nc]})
-            # Collisions: mover survives rule
-            if (nr, nc) in occ:
-                typ, _idx = occ[(nr, nc)]
-                if typ in ('white', 'red'):
-                    # Mover (scorpion) survives per mover-wins rule
-                    self._phase_events.append({'type': 'collision', 'winner': 'scorpion', 'loser': typ, 'at': [nr, nc]})
-                    # Remove the mummy it collided with
-                    if typ == 'white':
-                        self.board['white_mummies'] = [rc for rc in self.board['white_mummies'] if not (rc[0]==nr and rc[1]==nc)]
-                    else:
-                        self.board['red_mummies'] = [rc for rc in self.board['red_mummies'] if not (rc[0]==nr and rc[1]==nc)]
-                    occ.pop((nr, nc), None)
-                    occ.pop((r, c), None)
-                    occ[(nr, nc)] = ('scorpion', i)
-                    new_scs.append([nr, nc])
-                else:
-                    # Another scorpion occupied; last mover wins
-                    # Remove the previous scorpion
-                    # Find its index if present
-                    for j, (sr, sc) in enumerate(scs):
-                        if alive_scorp[j] and sr == nr and sc == nc:
-                            alive_scorp[j] = False
-                            break
-                    occ.pop((nr, nc), None)
-                    occ.pop((r, c), None)
-                    occ[(nr, nc)] = ('scorpion', i)
-                    new_scs.append([nr, nc])
-            else:
-                # Empty or player cell
-                prc = self._pos()
-                if prc is not None and (nr, nc) == prc:
-                    pass  # capture handled after phase
-                occ.pop((r, c), None)
-                occ[(nr, nc)] = ('scorpion', i)
-                new_scs.append([nr, nc])
-            # If landing on a key, toggle all gates
-            if self._cell_has_key(nr, nc):
+            if self._cell_has_key(to[0], to[1]):
                 tcnt = _toggle_all_gates(self.board)
                 self._phase_toggled += tcnt
                 if tcnt:
-                    self._phase_events.append({'type': 'toggle_gates', 'by': 'scorpion', 'at': [nr, nc], 'count': tcnt})
+                    self._phase_events.append({'type': 'toggle_gates', 'by': 'scorpion', 'at': [to[0], to[1]], 'count': tcnt})
 
-        self.board['scorpions'] = [rc for k, rc in enumerate(new_scs) if alive_scorp[k] or k < len(new_scs)]
+        # Commit
+        self.board['scorpions'] = [[to[0], to[1]] for i, (_frm, to) in enumerate(intended) if alive_scorp[i]]
 
     def _scorpion_dir(self, r: int, c: int) -> tuple[int, int]:
         # Move like a mummy (white behavior: horizontal-first if it reduces distance), but only one step overall.\r

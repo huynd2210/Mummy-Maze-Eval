@@ -84,16 +84,17 @@ def test_exit_event_and_done():
     assert res.done is True and res.won is True
 
 
-def test_collision_mummy_vs_mummy_event():
-    # 1x6: player far right, two whites at c=2 and c=3; first moves into c=3 killing the occupant
+def test_mummy_moves_simultaneous_no_collision_event():
+    # 1x6: two whites at c=2 and c=3; with simultaneous resolution there is no collision event on first mummy phase
     board = minimal_board(rows=1, cols=6)
     board['player'] = [0,5]
     board['white_mummies'] = [[0,2], [0,3]]
     g = Game(board)
     _ = g.step_micro('WAIT')  # player phase
     res = g.step_micro('WAIT')  # mummy1
-    # Expect collision event winner white, loser mummy at [0,3]
-    assert any(e.get('type') == 'collision' and e.get('winner') == 'white' and e.get('loser') == 'mummy' for e in res.events)
+    # No collision event expected; both issue move events
+    assert all(e.get('type') != 'collision' for e in res.events)
+    assert sum(1 for e in res.events if e.get('type') == 'move' and e.get('entity') == 'white') >= 1
 
 
 def test_collision_mummy_vs_scorpion_event():

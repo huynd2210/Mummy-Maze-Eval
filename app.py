@@ -266,6 +266,22 @@ def api_list_boards():
         return jsonify({'status': 'error', 'message': str(e)}), 400
 
 
+@app.post('/api/boards/<name>')
+def api_save_board_named(name: str):
+    try:
+        ensure_data_dir()
+        if not _is_safe_board_name(name):
+            return jsonify({'status': 'error', 'message': 'invalid_board_name'}), 400
+        incoming = request.get_json(force=True)
+        board = normalize_board(incoming)
+        path = os.path.join(BOARDS_DIR, name)
+        with open(path, 'w', encoding='utf-8') as f:
+            json.dump(board, f, indent=2)
+        return jsonify({'status': 'ok', 'name': name}), 200
+    except Exception as e:
+        return jsonify({'status': 'error', 'message': str(e)}), 400
+
+
 @app.post('/api/board')
 def api_save_board():
     try:

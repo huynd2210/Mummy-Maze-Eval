@@ -9,6 +9,8 @@
   const saveBtn = $("saveBtn");
   const clearBtn = $("clearBtn");
   const clearEntitiesBtn = $("clearEntitiesBtn");
+  const saveAsBtn = $("saveAsBtn");
+  const saveAsName = $("saveAsName");
   const exportJsonBtn = $("exportJsonBtn");
   const exportPairsBtn = $("exportPairsBtn");
   const copyExportBtn = $("copyExportBtn");
@@ -311,6 +313,25 @@
     else setStatus('Save failed: ' + (j.message || 'unknown'));
   }
 
+  function isSafeName(name) {
+    return /^[A-Za-z0-9_.-]+$/.test(name) && name.toLowerCase().endsWith('.json');
+  }
+
+  async function saveBoardAs() {
+    if (!board) return;
+    const name = (saveAsName.value || '').trim();
+    if (!name) { setStatus('Provide a file name like my_level.json'); return; }
+    if (!isSafeName(name)) { setStatus('Invalid name. Use letters, numbers, _ . - and end with .json'); return; }
+    const res = await fetch(`/api/boards/${encodeURIComponent(name)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(board)
+    });
+    const j = await res.json();
+    if (res.ok && j.status === 'ok') setStatus(`Saved to data/boards/${name}`);
+    else setStatus('Save As failed: ' + (j.message || 'unknown'));
+  }
+
   function exportJSON() {
     if (!board) return;
     const data = JSON.stringify(board, null, 2);
@@ -397,6 +418,7 @@
   loadBtn.addEventListener('click', loadBoard);
   newBtn.addEventListener('click', newBoard);
   saveBtn.addEventListener('click', saveBoard);
+  saveAsBtn.addEventListener('click', saveBoardAs);
   exportJsonBtn.addEventListener('click', exportJSON);
   exportPairsBtn.addEventListener('click', exportPairs);
   copyExportBtn.addEventListener('click', copyExport);
