@@ -67,26 +67,32 @@ def test_move_blocked_by_internal_wall():
 
 
 def test_gate_blocks_and_toggle_on_key():
+    # Use open/closed state: a present gate starts closed (blocks), stepping on a key toggles to open (unblocks).
     rows, cols = 2, 2
     b = fresh_board(rows, cols)
-    # Place a key on (0,1) so landing there toggles all gates
-    b["keys"] = [[0, 1]]
-    # Ensure the edge to the right is initially open (no wall/gate)
-    b["v_gates"][0][1] = False
+    # Present vertical gate between (0,0) and (0,1), initially CLOSED (default v_gate_open False)
+    b["v_gates"][0][1] = True
+    # Put a key at (1,0) so player can step DOWN to toggle
+    b["keys"] = [[1, 0]]
     g = Game(b)
 
-    total_gates = rows * (cols + 1) + (rows + 1) * cols
+    # Initially, RIGHT is blocked by a closed gate
+    r0 = g.step('RIGHT')
+    assert r0.moved is False and r0.blocked is True and r0.toggled == 0
+    assert r0.pos == (0, 0)
 
-    # Move RIGHT onto key -> toggles all gates
-    res = g.step('RIGHT')
-    assert res.moved is True and res.blocked is False
-    assert res.toggled == total_gates
-    assert res.pos == (0, 1)
+    # Step DOWN onto key -> toggles all present gates (here exactly 1)
+    r1 = g.step('DOWN')
+    assert r1.moved is True and r1.toggled == 1
+    assert g.board['v_gate_open'][0][1] is True  # gate is now OPEN
 
-    # Now the same edge should be closed by a gate after toggle
-    res2 = g.step('LEFT')
-    assert res2.moved is False and res2.blocked is True
-    assert res2.pos == (0, 1)
+    # Move back UP
+    r2 = g.step('UP')
+    assert r2.moved is True and r2.pos == (0, 0)
+
+    # Now RIGHT should be allowed (gate open)
+    r3 = g.step('RIGHT')
+    assert r3.moved is True and r3.blocked is False and r3.pos == (0, 1)
 
 
 def test_exit_win_and_game_over():
@@ -215,29 +221,33 @@ def test_mummy_defeats_scorpion_mover_wins_rule():
     assert g.done is True and g.won is False
 
 def test_enemy_toggles_gates_on_key_mummy():
-    # White mummy stepping onto a key toggles all gates
+    # White mummy stepping onto a key toggles OPEN/CLOSED state of present gates
     b = fresh_board(rows=1, cols=3)
     b["player"] = [0, 2]
     b["white_mummies"] = [[0, 0]]
     b["keys"] = [[0, 1]]
+    # Present gate at the edge white crosses between (0,0)-(0,1), initially OPEN so mummy can reach key
+    b["v_gates"][0][1] = True
+    b["v_gate_open"] = [[False, True, False]]  # cols+1 = 3; only internal gate is open
     g = Game(b)
-    # Before: all gates false
-    assert all(not any(row) for row in g.board['v_gates']) and all(not any(row) for row in g.board['h_gates'])
+    assert g.board['v_gate_open'][0][1] is True  # initially open
     g.step('WAIT')
-    # After: gates toggled at least once (now true)
-    assert any(any(row) for row in g.board['v_gates']) or any(any(row) for row in g.board['h_gates'])
+    # After first mummy step, it lands on the key and toggles gates -> this gate becomes CLOSED
+    assert g.board['v_gate_open'][0][1] is False
 
 def test_enemy_toggles_gates_on_key_scorpion():
     b = fresh_board(rows=1, cols=3)
     b["player"] = [0, 2]
     b["scorpions"] = [[0, 0]]
     b["keys"] = [[0, 1]]
+    # Present gate scorpion will cross; initially OPEN so scorpion can reach key
+    b["v_gates"][0][1] = True
+    b["v_gate_open"] = [[False, True, False]]
     g = Game(b)
-    # Before: all gates false
-    assert all(not any(row) for row in g.board['v_gates']) and all(not any(row) for row in g.board['h_gates'])
+    assert g.board['v_gate_open'][0][1] is True
     g.step('WAIT')
-    # After: scorpion hits key and toggles gates
-    assert any(any(row) for row in g.board['v_gates']) or any(any(row) for row in g.board['h_gates'])
+    # After scorpion step, it lands on key and toggles gates -> this gate becomes CLOSED
+    assert g.board['v_gate_open'][0][1] is False
 
 
 def test_enemy_captures_player():

@@ -34,7 +34,7 @@ This prints the final board after applying the sequence, and a JSON summary.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from copy import deepcopy
 from typing import Dict, List, Optional, Tuple, Any
 import json
@@ -72,6 +72,9 @@ def _ensure_fields(board: Dict[str, Any]) -> None:
     ensure_matrix('h_walls', rows + 1, cols)
     ensure_matrix('v_gates', rows, cols + 1)
     ensure_matrix('h_gates', rows + 1, cols)
+    # Gate open state matrices (True means OPEN/passable). Default all False (closed).
+    ensure_matrix('v_gate_open', rows, cols + 1)
+    ensure_matrix('h_gate_open', rows + 1, cols)
 
     # Entities
     board['player'] = board.get('player') if _in_bounds_rc(board.get('player'), rows, cols) else None
@@ -110,29 +113,37 @@ def _edge_blocked(board: Dict[str, Any], r: int, c: int, dr: int, dc: int) -> bo
         return True
     # determine edge occupancy
     if dr == 0 and dc == -1:  # left
-        return board['v_walls'][r][c] or board['v_gates'][r][c]
+        return board['v_walls'][r][c] or (board['v_gates'][r][c] and not board['v_gate_open'][r][c])
     if dr == 0 and dc == 1:   # right
-        return board['v_walls'][r][c + 1] or board['v_gates'][r][c + 1]
+        return board['v_walls'][r][c + 1] or (board['v_gates'][r][c + 1] and not board['v_gate_open'][r][c + 1])
     if dr == -1 and dc == 0:  # up
-        return board['h_walls'][r][c] or board['h_gates'][r][c]
+        return board['h_walls'][r][c] or (board['h_gates'][r][c] and not board['h_gate_open'][r][c])
     if dr == 1 and dc == 0:   # down
-        return board['h_walls'][r + 1][c] or board['h_gates'][r + 1][c]
+        return board['h_walls'][r + 1][c] or (board['h_gates'][r + 1][c] and not board['h_gate_open'][r + 1][c])
     raise ValueError('Invalid direction')
 
 
 def _toggle_all_gates(board: Dict[str, Any]) -> int:
-    """Flip all gate bits; return number toggled."""
+    """Toggle OPEN/CLOSED state of all PRESENT gates; return number toggled.
+    A gate is passable if present and OPEN. We do NOT create/destroy gates here.
+    """
     cnt = 0
     vg = board['v_gates']
+    v_open = board.get('v_gate_open')
     hg = board['h_gates']
+    h_open = board.get('h_gate_open')
+    if v_open is None or h_open is None:
+        return 0
     for r in range(len(vg)):
         for c in range(len(vg[r])):
-            vg[r][c] = not vg[r][c]
-            cnt += 1
+            if vg[r][c]:
+                v_open[r][c] = not v_open[r][c]
+                cnt += 1
     for r in range(len(hg)):
         for c in range(len(hg[r])):
-            hg[r][c] = not hg[r][c]
-            cnt += 1
+            if hg[r][c]:
+                h_open[r][c] = not h_open[r][c]
+                cnt += 1
     return cnt
 
 
@@ -156,6 +167,8 @@ class StepResult:
     done: bool
     reason: Optional[str]
     ascii: str
+    phase: str = 'turn'
+    events: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class Game:
@@ -177,6 +190,9 @@ class Game:
         self.won = False
         self.history: List[Dict[str, Any]] = []
         self.step_count = 0
+        self.phase = 'player'  # micro-step phase: 'player' -> 'mummy1' -> 'mummy2' -> 'scorpion' -> 'player'
+        self._phase_events: List[Dict[str, Any]] = []
+        self._phase_toggled: int = 0
 
     def snapshot(self) -> Dict[str, Any]:
         return {
@@ -210,6 +226,106 @@ class Game:
 
     def to_text(self, join_style: str = 'auto') -> str:
         return board_to_double_res_text(self.board, join_style=join_style)
+
+    def current_phase(self) -> str:
+        return getattr(self, 'phase', 'player')
+
+    def step_micro(self, action: Action) -> StepResult:
+        """Advance exactly one simulation phase.
+        Phases: player -> mummy1 -> mummy2 -> scorpion -> player -> ...
+        Only the player phase consumes an action; other phases ignore it.
+        Returns a StepResult with events from this micro-step.
+        """
+        # Initialize per-phase event buffer
+        self._phase_events = []
+        self._phase_toggled = 0
+        ph = self.current_phase()
+
+        if ph == 'player':
+            a = self.parse_action(action)
+            if a is None:
+                return StepResult(False, str(action), False, False, 0, self._pos(), self.won, self.done, 'invalid_action', self.to_text(), phase=ph, events=self._phase_events)
+            if a == 'RESET':
+                self.reset()
+                return StepResult(True, a, False, False, 0, self._pos(), self.won, self.done, None, self.to_text(), phase='player', events=self._phase_events)
+            if a == 'UNDO':
+                if not self.history:
+                    return StepResult(False, a, False, False, 0, self._pos(), self.won, self.done, 'no_history', self.to_text(), phase=ph, events=self._phase_events)
+                snap = self.history.pop()
+                self.restore(snap)
+                return StepResult(True, a, False, False, 0, self._pos(), self.won, self.done, None, self.to_text(), phase='player', events=self._phase_events)
+            if self.done:
+                return StepResult(False, a, False, False, 0, self._pos(), self.won, self.done, 'game_over', self.to_text(), phase=ph, events=self._phase_events)
+            # Record snapshot for UNDO
+            self.history.append(self.snapshot())
+            moved = False
+            blocked = False
+            toggled = 0
+            if a == 'WAIT':
+                pass
+            else:
+                dr, dc = DIRS[a]
+                prc = self._pos()
+                if prc is None:
+                    blocked = True
+                else:
+                    pr, pc = prc
+                    if _edge_blocked(self.board, pr, pc, dr, dc):
+                        blocked = True
+                    else:
+                        # Move
+                        self._phase_events.append({'type': 'move', 'entity': 'player', 'from': [pr, pc], 'to': [pr+dr, pc+dc]})
+                        self.board['player'] = [pr + dr, pc + dc]
+                        moved = True
+                        if self._on_key():
+                            toggled = _toggle_all_gates(self.board)
+                            if toggled:
+                                self._phase_events.append({'type': 'toggle_gates', 'by': 'player', 'at': self.board['player'], 'count': toggled})
+            # Post effects
+            if self._on_trap():
+                self.done = True
+                self.won = False
+                self._phase_events.append({'type': 'trap', 'who': 'player', 'at': self.board.get('player')})
+            elif self._on_exit():
+                self.done = True
+                self.won = True
+                self._phase_events.append({'type': 'exit', 'at': self.board.get('player')})
+            # Advance phase if not done
+            if not self.done:
+                self.phase = 'mummy1'
+            self.step_count += 1
+            return StepResult(True, a, moved, blocked, toggled, self._pos(), self.won, self.done, None, self.to_text(), phase=ph, events=self._phase_events)
+
+        # Enemy phases (ignore action)
+        if self.done:
+            return StepResult(False, str(action), False, False, 0, self._pos(), self.won, self.done, 'game_over', self.to_text(), phase=ph, events=self._phase_events)
+
+        if ph == 'mummy1' or ph == 'mummy2':
+            self._mummy_phase()
+            # Capture check
+            if self._player_captured():
+                self.done = True
+                self.won = False
+                self._phase_events.append({'type': 'capture', 'by': 'enemy', 'at': self._pos()})
+            # Advance phase
+            self.phase = 'mummy2' if ph == 'mummy1' else 'scorpion'
+            self.step_count += 1
+            return StepResult(True, f'PHASE:{ph}', False, False, self._phase_toggled, self._pos(), self.won, self.done, None, self.to_text(), phase=ph, events=self._phase_events)
+
+        if ph == 'scorpion':
+            self._scorpion_phase()
+            if self._player_captured():
+                self.done = True
+                self.won = False
+                self._phase_events.append({'type': 'capture', 'by': 'enemy', 'at': self._pos()})
+            # loop back to player
+            self.phase = 'player'
+            self.step_count += 1
+            return StepResult(True, 'PHASE:scorpion', False, False, self._phase_toggled, self._pos(), self.won, self.done, None, self.to_text(), phase=ph, events=self._phase_events)
+
+        # Unknown phase fallback
+        self.phase = 'player'
+        return StepResult(False, str(action), False, False, 0, self._pos(), self.won, self.done, 'invalid_phase', self.to_text(), phase=ph, events=self._phase_events)
 
     def step(self, action: Action) -> StepResult:
         a = self.parse_action(action)
@@ -307,6 +423,9 @@ class Game:
         return False
 
     def _mummy_phase(self) -> None:
+        # Reset phase log
+        self._phase_events = []
+        self._phase_toggled = 0
         # Build list of mummies in a deterministic order: whites then reds
         mummies = [("white", [int(r), int(c)]) for (r,c) in (self.board.get('white_mummies') or [])]
         mummies += [("red", [int(r), int(c)]) for (r,c) in (self.board.get('red_mummies') or [])]
@@ -335,9 +454,12 @@ class Game:
                 survivors.append((typ, [r, c]))
                 continue
             nr, nc = r + dr, c + dc
+            # record move intent (actual outcome might be collision)
+            self._phase_events.append({'type': 'move', 'entity': typ, 'from': [r, c], 'to': [nr, nc]})
             # Check collisions
             if (nr, nc) in occ:
                 # Kill occupant mummy; mover survives and takes the square
+                self._phase_events.append({'type': 'collision', 'winner': typ, 'loser': 'mummy', 'at': [nr, nc]})
                 occ.pop((nr, nc), None)
                 # Mark that occupant as dead by scanning mummies list
                 for j, (_t2, rc2) in enumerate(mummies):
@@ -350,6 +472,7 @@ class Game:
                 survivors.append((typ, [nr, nc]))
             elif (nr, nc) in sc_occ and alive_scorp[sc_occ[(nr, nc)][1]]:
                 # Mummy moves onto scorpion -> mover survives
+                self._phase_events.append({'type': 'collision', 'winner': typ, 'loser': 'scorpion', 'at': [nr, nc]})
                 sidx = sc_occ[(nr, nc)][1]
                 alive_scorp[sidx] = False
                 occ.pop((r, c), None)
@@ -366,7 +489,10 @@ class Game:
                 survivors.append((typ, [nr, nc]))
             # If landing on a key, toggle all gates
             if self._cell_has_key(nr, nc):
-                _toggle_all_gates(self.board)
+                tcnt = _toggle_all_gates(self.board)
+                self._phase_toggled += tcnt
+                if tcnt:
+                    self._phase_events.append({'type': 'toggle_gates', 'by': typ, 'at': [nr, nc], 'count': tcnt})
 
         # Update board lists and remove dead scorpions
         self.board['white_mummies'] = [pos for (t, pos) in survivors if t == 'white']
@@ -399,6 +525,9 @@ class Game:
             return (0, 0)
 
     def _scorpion_phase(self) -> None:
+        # Reset phase log
+        self._phase_events = []
+        self._phase_toggled = 0
         # Scorpions move one step towards player
         scs = [[int(r), int(c)] for (r,c) in (self.board.get('scorpions') or [])]
         # Occupancy of enemies (post-mummy)
@@ -422,11 +551,13 @@ class Game:
                 new_scs.append([r, c])
                 continue
             nr, nc = r + dr, c + dc
+            self._phase_events.append({'type': 'move', 'entity': 'scorpion', 'from': [r, c], 'to': [nr, nc]})
             # Collisions: mover survives rule
             if (nr, nc) in occ:
                 typ, _idx = occ[(nr, nc)]
                 if typ in ('white', 'red'):
                     # Mover (scorpion) survives per mover-wins rule
+                    self._phase_events.append({'type': 'collision', 'winner': 'scorpion', 'loser': typ, 'at': [nr, nc]})
                     # Remove the mummy it collided with
                     if typ == 'white':
                         self.board['white_mummies'] = [rc for rc in self.board['white_mummies'] if not (rc[0]==nr and rc[1]==nc)]
@@ -458,7 +589,10 @@ class Game:
                 new_scs.append([nr, nc])
             # If landing on a key, toggle all gates
             if self._cell_has_key(nr, nc):
-                _toggle_all_gates(self.board)
+                tcnt = _toggle_all_gates(self.board)
+                self._phase_toggled += tcnt
+                if tcnt:
+                    self._phase_events.append({'type': 'toggle_gates', 'by': 'scorpion', 'at': [nr, nc], 'count': tcnt})
 
         self.board['scorpions'] = [rc for k, rc in enumerate(new_scs) if alive_scorp[k] or k < len(new_scs)]
 

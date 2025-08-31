@@ -1,0 +1,1 @@
+{"rows": 1, "cols": 2, "v_walls": [[true, false, true]], "h_walls": [[true, true], [true, true]], "v_gates": [[false, false, false]], "h_gates": [[false, false], [false, false]], "player": [0, 0], "exit": null, "white_mummies": [], "red_mummies": [], "scorpions": [], "traps": [], "keys": []}

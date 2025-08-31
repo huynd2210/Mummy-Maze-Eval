@@ -55,9 +55,10 @@ def parse_level(ascii_map: str) -> Level:
     # Create the full grid with walls around perimeter
     tiles: List[List[TileType]] = [[TileType.WALL for _ in range(width)] for _ in range(height)]
     
-    # Fill interior with floor tiles (odd positions)
-    for y in range(1, height - 1, 2):
-        for x in range(1, width - 1, 2):
+    # Fill interior with floor tiles by default (both cells and edges),
+    # then apply explicit wall symbols (|, -, +) to carve walls.
+    for y in range(1, height - 1):
+        for x in range(1, width - 1):
             tiles[y][x] = TileType.FLOOR
 
     explorer: Position | None = None

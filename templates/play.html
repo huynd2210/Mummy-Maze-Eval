@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mummy Maze — Play</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='play.css') }}" />
+</head>
+<body>
+  <header>
+    <h1>Mummy Maze — LLM Run</h1>
+    <p>Visualize board, chat with the agent, and replay completed runs. Max 100 moves, 3-fold repetition ends the run.</p>
+  </header>
+
+  <section class="controls">
+    <div class="row">
+      <label>Board
+        <select id="boardSelect"></select>
+      </label>
+      <label>Model <input id="modelInput" type="text" value="openrouter/meta-llama/llama-3.1-8b-instruct" /></label>
+      <label>Temp <input id="tempInput" type="number" step="0.1" min="0" max="2" value="0.2" /></label>
+      <button id="startBtn" class="primary">Start Run</button>
+      <button id="stepLLMBtn">Step (LLM)</button>
+      <input id="actionInput" type="text" placeholder="Manual action (UP/DOWN/LEFT/RIGHT/WAIT)" />
+      <button id="stepHumanBtn">Step (Manual)</button>
+      <button id="autoBtn">Auto Run</button>
+      <button id="stopBtn">Stop</button>
+    </div>
+    <div class="status">
+      <span>Run ID: <code id="runId">-</code></span>
+      <span>Moves: <span id="moves">0</span>/100</span>
+      <span>3-fold repetition: <span id="streak">0</span>/3</span>
+      <span>State: <span id="state">idle</span></span>
+      <span id="reason"></span>
+    </div>
+  </section>
+
+  <main class="layout">
+    <section class="board">
+      <div class="canvas-wrap">
+        <canvas id="playCanvas" width="640" height="640"></canvas>
+      </div>
+      <details>
+        <summary>ASCII</summary>
+        <pre id="asciiOut"></pre>
+      </details>
+    </section>
+
+    <section class="chat">
+      <div class="chatlog" id="chatlog" aria-live="polite"></div>
+      <details open>
+        <summary>Replay</summary>
+        <div class="replay">
+          <div>
+            <label>Run <input id="replayRunId" type="text" placeholder="run id" /></label>
+            <button id="loadReplayBtn">Load</button>
+          </div>
+          <div>
+            <button id="prevStep">Prev</button>
+            <button id="nextStep">Next</button>
+            <span>Index: <span id="replayIdx">-</span></span>
+          </div>
+          <pre id="replayView"></pre>
+        </div>
+      </details>
+    </section>
+  </main>
+
+  <script src="{{ url_for('static', filename='play.js') }}"></script>
+</body>
+</html>
+

@@ -88,6 +88,8 @@ def board_to_double_res_text(board: dict, join_style: str = 'auto', symbols: Opt
     h_walls = _get_matrix(board, 'h_walls', rows + 1, cols)
     v_gates = _get_matrix(board, 'v_gates', rows, cols + 1)
     h_gates = _get_matrix(board, 'h_gates', rows + 1, cols)
+    v_gate_open = _get_matrix(board, 'v_gate_open', rows, cols + 1)
+    h_gate_open = _get_matrix(board, 'h_gate_open', rows + 1, cols)
 
     H = 2 * rows + 1
     W = 2 * cols + 1
@@ -100,7 +102,7 @@ def board_to_double_res_text(board: dict, join_style: str = 'auto', symbols: Opt
             cc = 2 * c + 1
             if h_walls[r][c]:
                 grid[rr][cc] = syms['h_wall']
-            elif h_gates[r][c]:
+            elif h_gates[r][c] and not h_gate_open[r][c]:
                 grid[rr][cc] = syms['h_gate']
 
     # Draw vertical edges
@@ -110,17 +112,17 @@ def board_to_double_res_text(board: dict, join_style: str = 'auto', symbols: Opt
             cc = 2 * c
             if v_walls[r][c]:
                 grid[rr][cc] = syms['v_wall']
-            elif v_gates[r][c]:
+            elif v_gates[r][c] and not v_gate_open[r][c]:
                 grid[rr][cc] = syms['v_gate']
 
     # Determine junction characters at intersections
     def has_h(r: int, c: int) -> bool:
-        return ((c > 0 and (h_walls[r][c-1] or h_gates[r][c-1])) or
-                (c < cols and (h_walls[r][c]   or h_gates[r][c])))
+        return ((c > 0 and (h_walls[r][c-1] or (h_gates[r][c-1] and not h_gate_open[r][c-1]))) or
+                (c < cols and (h_walls[r][c]   or (h_gates[r][c]   and not h_gate_open[r][c]))))
 
     def has_v(r: int, c: int) -> bool:
-        return ((r > 0 and (v_walls[r-1][c] or v_gates[r-1][c])) or
-                (r < rows and (v_walls[r][c]   or v_gates[r][c])))
+        return ((r > 0 and (v_walls[r-1][c] or (v_gates[r-1][c] and not v_gate_open[r-1][c]))) or
+                (r < rows and (v_walls[r][c]   or (v_gates[r][c]   and not v_gate_open[r][c]))))
 
     def has_h_wall(r: int, c: int) -> bool:
         return ((c > 0 and h_walls[r][c-1]) or (c < cols and h_walls[r][c]))

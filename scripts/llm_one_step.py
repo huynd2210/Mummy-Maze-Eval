@@ -18,6 +18,7 @@ INSTRUCTIONS = (
     "If a mummy collides with a scorpion, the mummy survives.\n\n"
     "Stepping on a trap kills the explorer but does not affect enemies.\n\n"
     "Stepping on a key toggles gates for all characters.\n\n"
+    "Legends: 'W' = white mummy, 'R' = red mummy, 'S' = scorpion, 'T' = trap, 'K' = key, 'G' = gate, 'g' = open gate, 'E' = exit, 'P' = player.\n\n"
     "The output format is: \"Action: <action>\".\n\n"
     "Available actions are: UP, DOWN, LEFT, RIGHT, WAIT, UNDO, RESET.\n"
 )

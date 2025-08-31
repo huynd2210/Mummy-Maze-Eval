@@ -1,0 +1,16 @@
+/* Simple layout for play page */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(420px, 1fr) 1fr;
+  gap: 12px;
+}
+.controls .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.controls .status { margin-top: 6px; display: flex; gap: 12px; color: var(--muted); }
+.chat { display: flex; flex-direction: column; gap: 8px; }
+.chatlog { background: #151932; border: 1px solid #272c47; border-radius: 8px; padding: 8px; height: 300px; overflow: auto; }
+.chatlog .msg { margin: 6px 0; }
+.chatlog .msg .meta { color: var(--muted); font-size: 12px; }
+.chatlog .msg .content { white-space: pre-wrap; }
+.replay { display: grid; gap: 8px; }
+.replay pre { background: #0e1228; border: 1px solid #1c2440; padding: 8px; border-radius: 6px; }
+

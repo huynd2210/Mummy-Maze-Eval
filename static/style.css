@@ -45,6 +45,7 @@ header p { margin: 0 0 12px; color: var(--muted); }
 
 .canvas-wrap { display: inline-block; padding: 8px; background: #151932; border: 1px solid #272c47; border-radius: 8px; }
 #boardCanvas { background: #f7f8fb; display: block; border-radius: 4px; }
+#playCanvas { background: #f7f8fb; display: block; border-radius: 4px; }
 
 .export-panel { margin-top: 12px; }
 #exportText { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
